@@ -31,7 +31,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -49,7 +49,8 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          "senzo_owner.env"))
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# Railway variables: BOT_TOKEN / TELEGRAM_BOT_TOKEN / TOKEN sab chalein ge
+BOT_TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 CONTROL_ID = os.getenv("CONTROL_ID")       # channel where commands are posted
 REPORT_ID = os.getenv("REPORT_ID")         # channel where users report
@@ -87,6 +88,27 @@ async def on_report(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     rep[uid] = payload
     save_reports(rep)
     await update.message.reply_text(f"✅ Report recorded for user {uid}")
+
+
+# ------------------------------------------------------------------
+# /start — owner welcome
+# ------------------------------------------------------------------
+async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    fid = update.effective_user.id
+    if OWNER_ID and fid != OWNER_ID:
+        await update.effective_message.reply_text(
+            "🚫 This bot is owner-only.")
+        return
+    await update.effective_message.reply_text(
+        "👑 SENZO OWNER BOT is online!\n\n"
+        "Commands:\n"
+        "/activate \u27e8machine_id\u27e9 \u27e8name\u27e9 [days] — issue a license key\n"
+        "/status — live report of all users\n"
+        "/push \u27e8link\u27e9 — push a link to every user's Tasks panel\n"
+        "/broadcast \u27e8msg\u27e9 — in-app announcement for all users\n"
+        "/update \u27e8url\u27e9 — announce a new version\n"
+        "/req \u27e8user\u27e9 \u27e8link\u27e9 — private request for one user",
+        parse_mode="HTML")
 
 
 # ------------------------------------------------------------------
@@ -219,8 +241,14 @@ async def cmd_activate(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ------------------------------------------------------------------
 def main():
     if not BOT_TOKEN:
-        sys.exit("Set BOT_TOKEN in senzo_owner.env (from @BotFather)")
+        sys.exit("Set BOT_TOKEN in Railway Variables "
+                 "(ya .env mein BOT_TOKEN=<BotFather token>)")
+    if CONTROL_ID and (not CONTROL_ID.startswith("-") or not CONTROL_ID[1:].isdigit()):
+        log.warning("CONTROL_ID looks wrong: %s (must be like -1001234567890)", CONTROL_ID)
+    if REPORT_ID and (not REPORT_ID.startswith("-") or not REPORT_ID[1:].isdigit()):
+        log.warning("REPORT_ID looks wrong: %s (must be like -1001234567890)", REPORT_ID)
     app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("push", cmd_push))
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
