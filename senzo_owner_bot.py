@@ -207,17 +207,25 @@ async def cmd_activate(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     machine, name = args[0], args[1]
     days = int(args[2]) if len(args) > 2 and args[2].isdigit() else 365
     try:
-        import os
-        import subprocess
-        out = subprocess.check_output(
-            [sys.executable,
-             os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "senzo_license.py"), "licprint",
-             "-m", machine, "-u", name, "-d", str(days)],
-            cwd=os.path.dirname(os.path.abspath(__file__))).decode().strip()
-    except subprocess.CalledProcessError as e:
+        # run licprint IN-PROCESS (no subprocess) — avoids all Railway
+        # path/cwd issues and gives us the exact error if anything fails
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import io
+        from contextlib import redirect_stdout
+        import senzo_license
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            senzo_license.licprint(name, machine, days)
+        out = [l for l in buf.getvalue().splitlines() if l.strip()][-1]
+    except Exception as e:
+        import traceback
         await update.effective_message.reply_text(
-            f"❌ License generation failed:\n{e.stderr or e.stdout}")
+            f"❌ License generation failed:\n\n"
+            f"```{traceback.format_exc(limit=6)[-1800:]}```\n\n"
+            f"Check that `licenses/senzo_owner.key` exists in this repo "
+            f"and `cryptography` is installed.",
+            parse_mode="HTML")
+        log.exception("activate error")
         return
     if not out or not out.startswith("eyJ"):
         await update.effective_message.reply_text(
